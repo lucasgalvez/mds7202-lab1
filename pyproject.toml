@@ -30,7 +30,9 @@ dependencies = [
     "umap-learn>=0.5.12",
     "xgboost>=3.3.0",
 ]
-
+[tool.pytest.ini_options]
+pythonpath = ["labs/lab_2/src"]
+testpaths = ["labs/lab_2/tests"]
 [dependency-groups]
 dev = [
     "pre-commit>=4.6.1",
