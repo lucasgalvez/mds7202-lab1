@@ -26,37 +26,65 @@ class Imagen:
         self.imagen = img
 
     def __add__(self, other: int | float | np.ndarray | Imagen) -> Imagen:
-        # Su código aquí
-        raise NotImplementedError(
-            "Completen __add__ antes de ejecutar el programa."
-        )
+        if isinstance(other, Imagen):  # revisa si es una imagen el other
+            if self.imagen.shape != other.imagen.shape:
+                raise ValueError("Las dimensiones de las imágenes no calzan")
+            otro = other.imagen
+        else:
+            otro = other
+
+        resultado = self.imagen + otro
+        resultado = np.clip(
+            resultado, 0, 255
+        )  # limita los valores entre 0 y 255
+        resultado = resultado.astype(int)
+        return Imagen(
+            np.copy(resultado)
+        )  # hace una copia de la imagen resultante
 
     def __radd__(self, other: int | float | np.ndarray | Imagen) -> Imagen:
-        # Su código aquí
-        raise NotImplementedError(
-            "Completen __radd__ antes de ejecutar el programa."
-        )
+        return self.__add__(
+            other
+        )  # usa el metodo __add__ para la suma reflejada
 
     def __sub__(self, other: int | float | np.ndarray | Imagen) -> Imagen:
-        # Su código aquí
-        raise NotImplementedError(
-            "Completen __sub__ antes de ejecutar el programa."
-        )
+        if isinstance(other, Imagen):
+            if self.imagen.shape != other.imagen.shape:
+                raise ValueError("Las dimensiones de las imágenes no calzan")
+            otro = other.imagen
+        else:
+            otro = other
+
+        resultado = self.imagen - otro
+        resultado = np.clip(resultado, 0, 255)
+        resultado = resultado.astype(int)
+        return Imagen(np.copy(resultado))
 
     def __rsub__(self, other: int | float | np.ndarray | Imagen) -> Imagen:
-        # Su código aquí
-        raise NotImplementedError(
-            "Completen __rsub__ antes de ejecutar el programa."
-        )
+        if isinstance(other, Imagen):
+            if self.imagen.shape != other.imagen.shape:
+                raise ValueError("Las dimensiones de las imágenes no calzan")
+            otro = other.imagen
+        else:
+            otro = other
+
+        resultado = otro - self.imagen
+        resultado = np.clip(resultado, 0, 255)
+        resultado = resultado.astype(int)
+        return Imagen(np.copy(resultado))
 
     def __mul__(self, other: int | float | np.ndarray | Imagen) -> Imagen:
-        # Su código aquí
-        raise NotImplementedError(
-            "Completen __mul__ antes de ejecutar el programa."
-        )
+        if isinstance(other, Imagen):
+            if self.imagen.shape != other.imagen.shape:
+                raise ValueError("Las dimensiones de las imágenes no calzan")
+            otro = other.imagen
+        else:
+            otro = other
+
+        resultado = self.imagen * otro
+        resultado = np.clip(resultado, 0, 255)
+        resultado = resultado.astype(int)
+        return Imagen(np.copy(resultado))
 
     def __rmul__(self, other: int | float | np.ndarray | Imagen) -> Imagen:
-        # Su código aquí
-        raise NotImplementedError(
-            "Completen __rmul__ antes de ejecutar el programa."
-        )
+        return self.__mul__(other)

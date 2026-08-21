@@ -12,22 +12,39 @@ class LibImagen:
     """Filtros y transformaciones que reciben y retornan ``Imagen``."""
 
     def to_negative(self, img_in: Imagen) -> Imagen:
-        # Su código aquí
-        raise NotImplementedError(
-            "Completen to_negative antes de ejecutar el programa."
-        )
+        resultado = (
+            255 - img_in.imagen
+        )  # crea una nueva imagen nueva con los valores negativos
+        resultado = resultado.astype(int)
+
+        return Imagen(resultado)
 
     def to_gray(self, img_in: Imagen) -> Imagen:
-        # Su código aquí
-        raise NotImplementedError(
-            "Completen to_gray antes de ejecutar el programa."
-        )
+        r = img_in.imagen[:, :, 0]
+        g = img_in.imagen[:, :, 1]
+        b = img_in.imagen[:, :, 2]
+
+        gris = 0.299 * r + 0.587 * g + 0.114 * b
+
+        resultado = np.stack(
+            [gris, gris, gris], axis=2
+        )  # hace que el resultado tenga 3 canales
+        resultado = resultado.astype(int)
+
+        return Imagen(resultado)
 
     def get_channel(self, img_in: Imagen, channel: str) -> Imagen:
-        # Su código aquí
-        raise NotImplementedError(
-            "Completen get_channel antes de ejecutar el programa."
-        )
+        canales = {"r": 0, "g": 1, "b": 2}
+        if channel not in canales:  # revisa que el canal sea r, g o b
+            raise ValueError(
+                f"Canal '{channel}' no válido. Valores posibles: 'r', 'g' o 'b'."
+            )
+        resultado = np.zeros_like(img_in.imagen)
+        indice = canales[channel]
+        resultado[:, :, indice] = img_in.imagen[:, :, indice]
+        resultado = resultado.astype(int)
+
+        return Imagen(resultado)
 
     def flip(self, img_in: Imagen, axis: str) -> Imagen:
         # Su código aquí
