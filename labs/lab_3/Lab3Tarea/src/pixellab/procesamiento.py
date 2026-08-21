@@ -47,22 +47,43 @@ class LibImagen:
         return Imagen(resultado)
 
     def flip(self, img_in: Imagen, axis: str) -> Imagen:
-        # Su código aquí
-        raise NotImplementedError(
-            "Completen flip antes de ejecutar el programa."
-        )
+        if axis == "h":
+            resultado = img_in.imagen[:, ::-1, :]
+        elif axis == "v":
+            resultado = img_in.imagen[::-1, :, :]
+        else:
+            raise ValueError(
+                f"Eje '{axis}' no válido. Valores posibles: 'h' (horizontal) o 'v' (vertical)."
+            )
+
+        resultado = np.copy(resultado).astype(int)
+        return Imagen(resultado)
 
     def set_saturation(self, img_in: Imagen, C: float) -> Imagen:
-        # Su código aquí
-        raise NotImplementedError(
-            "Completen set_saturation antes de ejecutar el programa."
-        )
+        img = img_in.imagen.astype(float) #transforma img a float para poder operar
+        gris = self.to_gray(img_in).imagen.astype(float) #transforma gris a float para poder operar
+
+        resultado = gris + C * (img - gris) #aplica la formula de saturacion
+
+        resultado[resultado < 0] = 0 #limita los valores menores a 0 a 0
+        resultado[resultado > 255] = 255 #limita los valores mayores a 255 a 255
+
+        resultado = resultado.astype(int) #vuelve a transformar resultado a int para que sea una imagen valida
+
+        return Imagen(resultado)
 
     def set_contrast(self, img_in: Imagen, C: float) -> Imagen:
-        # Su código aquí
-        raise NotImplementedError(
-            "Completen set_contrast antes de ejecutar el programa."
-        )
+        img = img_in.imagen.astype(float)
+
+        F = 259 * (C + 255) / (255 * (259 - C))
+        resultado = F * (img - 128) + 128
+
+        resultado[resultado < 0] = 0
+        resultado[resultado > 255] = 255
+
+        resultado = resultado.astype(int)
+
+        return Imagen(resultado)
 
     def conv_channel(self, img_in: Imagen, kernel: np.ndarray) -> Imagen:
         """Por documentar (esto es parte del trabajo de la Etapa 6)."""
