@@ -60,15 +60,23 @@ class LibImagen:
         return Imagen(resultado)
 
     def set_saturation(self, img_in: Imagen, C: float) -> Imagen:
-        img = img_in.imagen.astype(float) #transforma img a float para poder operar
-        gris = self.to_gray(img_in).imagen.astype(float) #transforma gris a float para poder operar
+        img = img_in.imagen.astype(
+            float
+        )  # transforma img a float para poder operar
+        gris = self.to_gray(img_in).imagen.astype(
+            float
+        )  # transforma gris a float para poder operar
 
-        resultado = gris + C * (img - gris) #aplica la formula de saturacion
+        resultado = gris + C * (img - gris)  # aplica la formula de saturacion
 
-        resultado[resultado < 0] = 0 #limita los valores menores a 0 a 0
-        resultado[resultado > 255] = 255 #limita los valores mayores a 255 a 255
+        resultado[resultado < 0] = 0  # limita los valores menores a 0 a 0
+        resultado[resultado > 255] = (
+            255  # limita los valores mayores a 255 a 255
+        )
 
-        resultado = resultado.astype(int) #vuelve a transformar resultado a int para que sea una imagen valida
+        resultado = resultado.astype(
+            int
+        )  # vuelve a transformar resultado a int para que sea una imagen valida
 
         return Imagen(resultado)
 
