@@ -1,0 +1,22 @@
+table: silver.customers
+purpose: >
+  Conservar un registro por customer_id, verificado uno a uno, para vincular
+  las órdenes con la ubicación del cliente.
+grain: "Una fila por customer_id."
+primary_key: [customer_id]
+owner: "equipo-pudulake"
+lineage: [bronze.customers]
+classification: "internal"
+required_columns:
+  - customer_id
+  - customer_unique_id
+column_types:
+  customer_id: string
+  customer_unique_id: string
+allow_empty: false
+constraints:
+  customer_id:
+    nullable: false
+    unique: true
+  customer_unique_id:
+    nullable: false

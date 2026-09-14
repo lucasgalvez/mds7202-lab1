@@ -1,0 +1,38 @@
+table: gold.customer_rfm
+purpose: >
+  Calcular Recency, Frequency y Monetary por cliente real (customer_unique_id)
+  a partir de órdenes entregadas y pagadas, como insumo de un modelo
+  posterior de propensión a recompra.
+grain: "Una fila por customer_unique_id."
+primary_key: [customer_unique_id]
+owner: "equipo-pudulake"
+lineage: [silver.orders, silver.customers, silver.payments]
+classification: "internal"
+required_columns:
+  - customer_unique_id
+  - last_purchase_at
+  - frequency
+  - monetary
+  - recency_days
+  - segment
+column_types:
+  customer_unique_id: string
+  frequency: integer
+  monetary: float
+  recency_days: integer
+  segment: string
+allow_empty: false
+constraints:
+  customer_unique_id:
+    nullable: false
+    unique: true
+  frequency:
+    nullable: false
+    minimum: 1
+  monetary:
+    nullable: false
+    minimum: 0
+    finite: true
+  recency_days:
+    nullable: false
+    minimum: 0

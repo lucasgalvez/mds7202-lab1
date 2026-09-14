@@ -7,30 +7,53 @@ import polars as pl
 
 ESQUEMA_TEMPERATURAS = pa.DataFrameSchema({})
 
+ESQUEMA_ESPERADO = {
+    "country": pl.String,
+    "iso_alpha2": pl.String,
+    "iso_alpha3": pl.String,
+    "year": pl.Int64,
+    "period": pl.String,
+    "temperature_c": pl.Float64,
+    "parameter": pl.String,
+    "units": pl.String,
+    "source_file": pl.String,
+}
+
 
 def comparar_esquema(temperaturas: pl.DataFrame) -> list[str]:
-    """Devuelve diferencias entre el esquema real y el esperado."""
-    raise NotImplementedError(
-        "Completen comparar_esquema antes de ejecutar el programa."
-    )
+    diferencias = []
+
+    for columna, tipo_esperado in ESQUEMA_ESPERADO.items():
+        if columna not in temperaturas.columns:
+            diferencias.append(f"Falta la columna {columna}")
+
+        elif temperaturas.schema[columna] != tipo_esperado:
+            diferencias.append(
+                f"{columna}: se esperaba {tipo_esperado}, "
+                f"pero se encontró {temperaturas.schema[columna]}"
+            )
+
+    return diferencias
 
 
 def validar_esquema(temperaturas: pl.DataFrame) -> None:
-    """Comprueba los nombres y tipos de las columnas."""
-    raise NotImplementedError(
-        "Completen validar_esquema antes de ejecutar el programa."
-    )
+    diferencias = comparar_esquema(temperaturas)
+
+    if diferencias:
+        raise ValueError("; ".join(diferencias))
 
 
 def validar_datos(temperaturas: pl.DataFrame) -> pl.DataFrame:
-    """Valida tipos, periodos, unidades y valores faltantes."""
-    raise NotImplementedError(
-        "Completen validar_datos antes de ejecutar el programa."
-    )
+    validar_esquema(temperaturas)
+    validado = ESQUEMA_TEMPERATURAS.validate(temperaturas)
+    return validado
 
 
 def casos_que_fallan(temperaturas: pl.DataFrame) -> pl.DataFrame:
-    """Devuelve los incumplimientos sin ocultar sus columnas."""
-    raise NotImplementedError(
-        "Completen casos_que_fallan antes de ejecutar el programa."
-    )
+    try:
+        ESQUEMA_TEMPERATURAS.validate(temperaturas, lazy=True)
+
+    except pa.errors.SchemaErrors as error:
+        return error.failure_cases
+
+    return pl.DataFrame()
