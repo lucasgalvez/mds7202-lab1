@@ -1,11 +1,23 @@
 table: silver.payments
-purpose: ""
-grain: ""
-primary_key: []
-owner: ""
-lineage: []
-classification: ""
-required_columns: []
-column_types: {}
+purpose: >
+  Registrar cada pago con montos verificados como no negativos y finitos,
+  insumo directo de Monetary en RFM.
+grain: "Una fila por order_id y payment_sequential."
+primary_key: [order_id, payment_sequential]
+owner: "equipo-pudulake"
+lineage: [bronze.payments]
+classification: "internal"
+required_columns:
+  - order_id
+  - payment_sequential
+  - payment_value
+column_types:
+  order_id: string
+  payment_sequential: integer
+  payment_value: float
 allow_empty: false
-constraints: {}
+constraints:
+  payment_value:
+    nullable: false
+    minimum: 0
+    finite: true
