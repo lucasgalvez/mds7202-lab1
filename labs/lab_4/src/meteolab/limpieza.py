@@ -19,7 +19,7 @@ def resumen_de_nulos(temperaturas: pl.DataFrame) -> pl.DataFrame:
             {
                 "columna": columna,
                 "nulos": cantidad_nulos,
-                "porcentaje_nulos": porcentaje_nulos,
+                "porcentaje": porcentaje_nulos,
             }
         )
 
@@ -27,11 +27,11 @@ def resumen_de_nulos(temperaturas: pl.DataFrame) -> pl.DataFrame:
 
 
 def claves_repetidas(temperaturas: Tabla) -> Tabla:
-    repetidas = temperaturas.group_by(["country", "year", "period"]).agg(
-        pl.len().alias("repeticiones")
+    repetidas = (
+        temperaturas.group_by(["country", "year", "period"])
+        .agg(pl.len())
+        .filter(pl.col("len") > 1)
     )
-
-    repetidas = repetidas.filter(pl.col("repeticiones") > 1)
 
     return repetidas
 

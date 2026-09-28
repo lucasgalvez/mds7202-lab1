@@ -5,7 +5,37 @@ from __future__ import annotations
 import pandera.polars as pa
 import polars as pl
 
-ESQUEMA_TEMPERATURAS = pa.DataFrameSchema({})
+from src.meteolab.constantes import PERIODOS_VALIDOS
+
+ESQUEMA_TEMPERATURAS = pa.DataFrameSchema(
+    {
+        "country": pa.Column(pl.String),
+        "iso_alpha2": pa.Column(pl.String),
+        "iso_alpha3": pa.Column(pl.String),
+        "year": pa.Column(
+            pl.Int64,
+            checks=pa.Check.in_range(1901, 2025),
+        ),
+        "period": pa.Column(
+            pl.String,
+            checks=pa.Check.isin(PERIODOS_VALIDOS),
+        ),
+        "temperature_c": pa.Column(
+            pl.Float64,
+            nullable=True,
+        ),
+        "parameter": pa.Column(
+            pl.String,
+            checks=pa.Check.eq("Mean Temperature"),
+        ),
+        "units": pa.Column(
+            pl.String,
+            checks=pa.Check.eq("degrees Celsius"),
+        ),
+        "source_file": pa.Column(pl.String),
+    }
+)
+
 
 ESQUEMA_ESPERADO = {
     "country": pl.String,
