@@ -1,12 +1,10 @@
 table: silver.order_items
-purpose: >
-  Registrar cada ítem vendido con precio y flete verificados como no
-  negativos, insumo directo de ventas diarias.
-grain: "Una fila por order_id y order_item_id."
+purpose: Publicar ítems de órdenes con precios y fletes válidos para agregaciones de ventas.
+grain: Una fila por ítem dentro de una orden.
 primary_key: [order_id, order_item_id]
-owner: "equipo-pudulake"
+owner: Equipo de Datos Pudubella
 lineage: [bronze.order_items]
-classification: "internal"
+classification: interno
 required_columns:
   - order_id
   - order_item_id
@@ -19,6 +17,10 @@ column_types:
   freight_value: float
 allow_empty: false
 constraints:
+  order_id:
+    nullable: false
+  order_item_id:
+    nullable: false
   price:
     nullable: false
     minimum: 0
