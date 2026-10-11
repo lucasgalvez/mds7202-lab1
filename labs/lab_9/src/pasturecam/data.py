@@ -1,35 +1,30 @@
-"""Lectura y transformación de la tabla de mediciones."""
-
-from __future__ import annotations
+"""Transformaciones de la tabla de mediciones de biomasa."""
 
 import polars as pl
 
-try:
-    from .contratos import OBJETIVOS
-except ImportError:  # pragma: no cover
-    OBJETIVOS = [
-        "Dry_Green_g",
-        "Dry_Dead_g",
-        "Dry_Clover_g",
-        "GDM_g",
-        "Dry_Total_g",
-    ]
+from src.pasturecam.contratos import OBJETIVOS as _OBJETIVOS
 
-_COLUMNAS_LARGO = ("sample_id", "target_name", "target")
+OBJETIVOS = _OBJETIVOS
 
 
 def a_formato_ancho(df_largo: pl.DataFrame) -> pl.DataFrame:
-    """Pasa la tabla de formato largo a ancho: una fila por imagen.
+    """Pivotea la tabla de mediciones de formato largo a ancho.
 
-    El índice son todas las columnas salvo ``sample_id``, ``target_name`` y
-    ``target``; ``sample_id`` es distinto en cada una de las cinco filas de una
-    imagen y, si entrara al índice, esas filas no se juntarían.
+    `df_largo` trae una fila por imagen y objetivo: `target_name` nombra el
+    objetivo, `target` trae su valor, `sample_id` identifica esa fila
+    (imagen + objetivo) y el resto de las columnas (incluido `image_path`)
+    se repite igual en las cinco filas de una misma imagen. El resultado
+    trae una fila por imagen, con una columna por cada nombre de
+    `OBJETIVOS` y los metadatos conservados sin duplicar.
     """
-    indice = [c for c in df_largo.columns if c not in _COLUMNAS_LARGO]
-    ancho = df_largo.pivot(
+    columnas_indice = [
+        col
+        for col in df_largo.columns
+        if col not in ["sample_id", "target_name", "target"]
+    ]
+
+    return df_largo.pivot(
         on="target_name",
-        index=indice,
+        index=columnas_indice,
         values="target",
-        aggregate_function="first",
     )
-    return ancho.select(*indice, *OBJETIVOS)
