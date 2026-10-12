@@ -6,27 +6,19 @@ from pathlib import Path
 
 import polars as pl
 
+SOURCES = ("orders", "customers", "order_items", "payments")
+
 
 def read_sources(raw_dir: Path) -> dict[str, pl.DataFrame]:
     """Lee las cuatro fuentes crudas y conserva exactamente su esquema."""
+    sources: dict[str, pl.DataFrame] = {}
 
-    sources = {
-        "orders": "orders.parquet",
-        "customers": "customers.parquet",
-        "order_items": "order_items.parquet",
-        "payments": "payments.parquet",
-    }
-
-    result: dict[str, pl.DataFrame] = {}
-
-    for name, filename in sources.items():
-        path = raw_dir / filename
+    for name in SOURCES:
+        path = raw_dir / f"{name}.parquet"
 
         if not path.exists():
-            raise FileNotFoundError(
-                f"No se encontró la fuente '{name}': {path}"
-            )
+            raise FileNotFoundError(f"Falta la fuente Bronze '{name}': {path}")
 
-        result[name] = pl.read_parquet(path)
+        sources[name] = pl.read_parquet(path)
 
-    return result
+    return sources

@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import polars as pl
 
-from .contracts import ContractViolation
+from src.pudulake.contracts import ContractViolation
 
-# Todas las columnas de fecha de `orders` llegan desde Bronze como texto.
-ORDER_DATE_COLUMNS = (
+DATE_COLUMNS = (
     "order_purchase_timestamp",
     "order_approved_at",
     "order_delivered_carrier_date",
@@ -15,102 +14,168 @@ ORDER_DATE_COLUMNS = (
     "order_estimated_delivery_date",
 )
 
+ALLOWED_ORDER_STATUS = {
+    "approved",
+    "canceled",
+    "created",
+    "delivered",
+    "invoiced",
+    "processing",
+    "shipped",
+    "unavailable",
+}
 
-def _parse_dates(frame: pl.DataFrame, columns: tuple[str, ...]) -> pl.DataFrame:
-    """Tipa columnas de texto a datetime distinguiendo nulo real de texto roto.
 
-    Un valor nulo representa una fecha que legítimamente no ha ocurrido
-    todavía (por ejemplo, una orden que aún no se entrega). Un valor no nulo
-    que no puede interpretarse como fecha es un dato corrupto y debe detener
-    la corrida antes de llegar a Gold.
-    """
-    result = frame
+def _parse_datetime_column(
+    frame: pl.DataFrame,
+    column: str,
+) -> pl.DataFrame:
+    """Convierte una columna a Datetime distinguiendo nulos de fechas inválidas."""
+
+    dtype = frame.schema[column]
+
+    # Si toda la columna es nula, Polars la tipa como Null.
+    if dtype == pl.Null:
+        return frame.with_columns(
+            pl.col(column).cast(pl.Datetime).alias(column)
+        )
+
+    # Si ya está tipada como fecha, no hacemos nada.
+    if dtype == pl.Date:
+        return frame.with_columns(
+            pl.col(column).cast(pl.Datetime).alias(column)
+        )
+
+    if dtype.base_type() == pl.Datetime:
+        return frame
+
+    # Las fechas de origen deberían venir como String.
+    if dtype != pl.String:
+        raise ContractViolation(
+            f"silver.orders.{column} contiene una fecha no interpretable."
+        )
+
+    parsed = pl.col(column).str.to_datetime(strict=False)
+
+    invalid = frame.select(
+        (pl.col(column).is_not_null() & parsed.is_null()).any()
+    ).item()
+
+    if invalid:
+        raise ContractViolation(
+            f"silver.orders.{column} contiene una fecha no interpretable."
+        )
+
+    return frame.with_columns(parsed.alias(column))
+
+
+def _validate_non_negative_finite(
+    frame: pl.DataFrame,
+    columns: tuple[str, ...],
+    table: str,
+) -> None:
+    """Comprueba que los montos sean no negativos y finitos."""
+
     for column in columns:
-        parsed = result[column].cast(pl.String).str.to_datetime(strict=False)
-        invalid = result.filter(pl.col(column).is_not_null() & parsed.is_null())
-        if invalid.height > 0:
+        values = frame[column].drop_nulls()
+
+        if values.len() > 0 and (values < 0).any():
             raise ContractViolation(
-                f"silver.orders.{column} contiene una fecha no interpretable."
+                f"{table}.{column} contiene valores negativos."
             )
-        result = result.with_columns(parsed.alias(column))
-    return result
+
+        if values.len() > 0 and (~values.is_finite()).any():
+            raise ContractViolation(
+                f"{table}.{column} contiene valores no finitos."
+            )
 
 
 def build_orders(orders: pl.DataFrame) -> pl.DataFrame:
-    """Tipa fechas de órdenes y comprueba su secuencia temporal.
+    """Tipa fechas de órdenes y comprueba su secuencia temporal."""
 
-    Agrega ``delivery_timestamp_missing`` para distinguir, después de tipar,
-    las órdenes que nunca registraron una entrega (nulo real) de un problema
-    de parseo (que ya se habría detenido antes). También verifica que ninguna
-    orden quede "aprobada" o "entregada" antes de haberse comprado: eso
-    invalidaría el cálculo de Recency en RFM.
-    """
-    missing_delivery = orders["order_delivered_customer_date"].is_null()
+    result = orders.clone()
 
-    result = _parse_dates(orders, ORDER_DATE_COLUMNS)
+    for column in DATE_COLUMNS:
+        result = _parse_datetime_column(result, column)
 
-    if result.filter(pl.col("order_purchase_timestamp").is_null()).height > 0:
-        raise ContractViolation(
-            "silver.orders no puede tener order_purchase_timestamp ausente."
-        )
-
-    for column in ("order_approved_at", "order_delivered_customer_date"):
-        rota = result.filter(
-            pl.col(column).is_not_null()
-            & (pl.col(column) < pl.col("order_purchase_timestamp"))
-        )
-        if rota.height > 0:
-            raise ContractViolation(
-                f"silver.orders rompe la secuencia temporal: {column} es "
-                "anterior a order_purchase_timestamp."
-            )
-
-    return result.with_columns(
-        missing_delivery.alias("delivery_timestamp_missing")
+    observed_status = set(
+        result["order_status"].drop_nulls().unique().to_list()
     )
+
+    invalid_status = observed_status - ALLOWED_ORDER_STATUS
+
+    if invalid_status:
+        raise ContractViolation(
+            "silver.orders.order_status contiene valores fuera del contrato."
+        )
+
+    delivered_before_purchase = result.select(
+        (
+            (pl.col("order_status") == "delivered")
+            & pl.col("order_delivered_customer_date").is_not_null()
+            & (
+                pl.col("order_delivered_customer_date")
+                < pl.col("order_purchase_timestamp")
+            )
+        ).any()
+    ).item()
+
+    if delivered_before_purchase:
+        raise ContractViolation(
+            "silver.orders contiene una orden entregada antes de su compra."
+        )
+
+    result = result.with_columns(
+        (
+            (pl.col("order_status") == "delivered")
+            & pl.col("order_delivered_customer_date").is_null()
+        ).alias("delivery_timestamp_missing")
+    )
+
+    return result
 
 
 def build_customers(customers: pl.DataFrame) -> pl.DataFrame:
     """Conserva clientes y verifica la relación uno a uno con customer_id."""
-    if customers.filter(pl.col("customer_id").is_null()).height > 0:
-        raise ContractViolation(
-            "silver.customers no puede tener customer_id nulo."
-        )
+
+    if customers["customer_id"].null_count() > 0:
+        raise ContractViolation("silver.customers.customer_id no admite nulos.")
 
     if customers["customer_id"].n_unique() != customers.height:
         raise ContractViolation(
-            "silver.customers no respeta la relación uno a uno de customer_id."
+            "silver.customers.customer_id debe identificar una única fila."
         )
 
-    return customers
+    if customers["customer_unique_id"].null_count() > 0:
+        raise ContractViolation(
+            "silver.customers.customer_unique_id no admite nulos."
+        )
+
+    return customers.clone()
 
 
 def build_order_items(items: pl.DataFrame) -> pl.DataFrame:
     """Comprueba que los ítems no tengan precios ni fletes negativos."""
-    negativos = items.filter(
-        (pl.col("price") < 0) | (pl.col("freight_value") < 0)
-    )
-    if negativos.height > 0:
-        raise ContractViolation(
-            "silver.order_items contiene precios o fletes negativos."
-        )
 
-    return items
+    _validate_non_negative_finite(
+        items,
+        ("price", "freight_value"),
+        "silver.order_items",
+    )
+
+    return items.clone()
 
 
 def build_payments(payments: pl.DataFrame) -> pl.DataFrame:
     """Comprueba que los pagos no tengan montos negativos."""
-    valores = payments["payment_value"]
 
-    no_finitos = payments.filter(~valores.is_finite())
-    if no_finitos.height > 0:
-        raise ContractViolation("silver.payments contiene montos no finitos.")
+    _validate_non_negative_finite(
+        payments,
+        ("payment_value",),
+        "silver.payments",
+    )
 
-    negativos = payments.filter(pl.col("payment_value") < 0)
-    if negativos.height > 0:
-        raise ContractViolation("silver.payments contiene montos negativos.")
-
-    return payments
+    return payments.clone()
 
 
 def validate_relationships(
@@ -120,28 +185,36 @@ def validate_relationships(
     payments: pl.DataFrame,
 ) -> None:
     """Verifica las claves foráneas antes de construir productos Gold."""
-    order_ids = set(orders["order_id"].to_list())
-    customer_ids = set(customers["customer_id"].to_list())
 
-    huerfanas_customer = orders.filter(
-        ~pl.col("customer_id").is_in(customer_ids)
-    )
-    if huerfanas_customer.height > 0:
+    orphan_orders = orders.join(
+        customers.select("customer_id").unique(),
+        on="customer_id",
+        how="anti",
+    ).height
+
+    orphan_items = items.join(
+        orders.select("order_id").unique(),
+        on="order_id",
+        how="anti",
+    ).height
+
+    orphan_payments = payments.join(
+        orders.select("order_id").unique(),
+        on="order_id",
+        how="anti",
+    ).height
+
+    if orphan_orders > 0:
         raise ContractViolation(
-            "silver.orders tiene una clave foránea huérfana hacia "
-            "silver.customers."
+            "Se detectó una relación huérfana entre orders y customers."
         )
 
-    huerfanas_items = items.filter(~pl.col("order_id").is_in(order_ids))
-    if huerfanas_items.height > 0:
+    if orphan_items > 0:
         raise ContractViolation(
-            "silver.order_items tiene una clave foránea huérfana hacia "
-            "silver.orders."
+            "Se detectó una relación huérfana entre order_items y orders."
         )
 
-    huerfanas_payments = payments.filter(~pl.col("order_id").is_in(order_ids))
-    if huerfanas_payments.height > 0:
+    if orphan_payments > 0:
         raise ContractViolation(
-            "silver.payments tiene una clave foránea huérfana hacia "
-            "silver.orders."
+            "Se detectó una relación huérfana entre payments y orders."
         )

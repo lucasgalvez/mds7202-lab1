@@ -1,22 +1,31 @@
 table: silver.payments
-purpose: >
-  Registrar cada pago con montos verificados como no negativos y finitos,
-  insumo directo de Monetary en RFM.
-grain: "Una fila por order_id y payment_sequential."
-primary_key: [order_id, payment_sequential]
-owner: "equipo-pudulake"
-lineage: [bronze.payments]
-classification: "internal"
+purpose: Publicar pagos asociados a órdenes con montos válidos para el cálculo de Monetary.
+grain: Una fila por pago secuencial dentro de una orden.
+primary_key:
+  - order_id
+  - payment_sequential
+owner: Equipo de Datos Pudubella
+lineage:
+  - bronze.payments
+classification: interno
+
 required_columns:
   - order_id
   - payment_sequential
   - payment_value
+
 column_types:
   order_id: string
   payment_sequential: integer
   payment_value: float
+
 allow_empty: false
+
 constraints:
+  order_id:
+    nullable: false
+  payment_sequential:
+    nullable: false
   payment_value:
     nullable: false
     minimum: 0
