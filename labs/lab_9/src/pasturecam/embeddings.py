@@ -24,10 +24,7 @@ def dividir_en_tiles(imagen: Image.Image, n: int) -> list[Image.Image]:
     for i in range(n):
         izquierda = i * ancho_tile
 
-        if i == n - 1:
-            derecha = ancho
-        else:
-            derecha = (i + 1) * ancho_tile
+        derecha = ancho if i == n - 1 else (i + 1) * ancho_tile
 
         tile = imagen.crop((izquierda, 0, derecha, alto))
         tiles.append(tile)
