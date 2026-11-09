@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import lightgbm
 import numpy as np
@@ -52,9 +53,63 @@ def temporal_split(
     Rechaza largos distintos, ausencia de `hora` de tipo fecha, entradas
     vacías, horizonte menor que 1, cortes invertidos y particiones vacías.
     """
-    raise NotImplementedError(
-        "Completen temporal_split antes de ejecutar esta celda."
-    )
+
+    if len(X) != len(y):
+        raise ValueError("X e y deben tener el mismo largo")
+    if X.is_empty():
+        raise ValueError("X e y no pueden estar vacíos")
+    if "hora" not in X.columns:
+        raise ValueError("X debe contener la columna 'hora'")
+    if X.schema["hora"].base_type() != pl.Datetime:
+        raise ValueError("'hora' debe ser de tipo Datetime")
+    if horizonte < 1:
+        raise ValueError("El horizonte debe ser al menos 1 hora")
+
+    zona = ZoneInfo("America/Santiago")
+
+    def convertir_fecha(fecha):
+        if isinstance(fecha, str):
+            fecha = datetime.fromisoformat(fecha)
+        if fecha.tzinfo is None:
+            fecha = fecha.replace(tzinfo=zona)
+        return fecha.astimezone(zona)
+
+    inicio_validacion = convertir_fecha(inicio_validation)
+    inicio_test = convertir_fecha(inicio_test)
+
+    if inicio_validacion >= inicio_test:
+        raise ValueError(
+            "El inicio de test debe ser posterior al de validación"
+        )
+
+    horas = X["hora"].to_list()
+    primer_origen_validacion = inicio_validacion - timedelta(hours=horizonte)
+    primer_origen_test = inicio_test - timedelta(hours=horizonte)
+
+    indices = {"train": [], "validation": [], "test": []}
+
+    for i, hora in enumerate(horas):
+        if hora is None:
+            raise ValueError(
+                "La columna 'hora' no puede contener valores nulos"
+            )
+
+        target = hora + timedelta(hours=horizonte)
+
+        if target < primer_origen_validacion:
+            indices["train"].append(i)
+        elif inicio_validacion <= target < primer_origen_test:
+            indices["validation"].append(i)
+        elif target >= inicio_test:
+            indices["test"].append(i)
+
+    if any(len(posiciones) == 0 for posiciones in indices.values()):
+        raise ValueError("Las particiones no pueden quedar vacías")
+
+    return {
+        nombre: (X[posiciones], y[posiciones])
+        for nombre, posiciones in indices.items()
+    }
 
 
 def rmse(y_real: pl.Series, y_pred: pl.Series) -> float:
@@ -150,9 +205,28 @@ def daily_persistence_forecast(
     notebook, esas filas se excluyen de todas ellas; las features con
     faltantes se conservan para LightGBM.
     """
-    raise NotImplementedError(
-        "Completen daily_persistence_forecast antes de ejecutar esta celda."
+    if not 1 <= horizonte <= 24:
+        raise ValueError("El horizonte debe estar entre 1 y 24 horas")
+
+    horas_busqueda = X.select(
+        (pl.col("hora") + pl.duration(hours=horizonte - 24)).alias(
+            "_hora_busqueda"
+        )
     )
+
+    temperaturas_ayer = temperaturas.select(
+        pl.col("hora").alias("_hora_busqueda"),
+        pl.col("temp").alias("_prediccion"),
+    )
+
+    resultado = horas_busqueda.join(
+        temperaturas_ayer,
+        on="_hora_busqueda",
+        how="left",
+        maintain_order="left",
+    )
+
+    return resultado["_prediccion"].alias("pronostico")
 
 
 def climatology_forecast(
@@ -170,9 +244,42 @@ def climatology_forecast(
     no aparece en train, usa la media general de train. Devuelve una serie
     `pronostico` con una fila por cada fila de `X`.
     """
-    raise NotImplementedError(
-        "Completen climatology_forecast antes de ejecutar esta celda."
+    if len(X_train) != len(y_train):
+        raise ValueError("X_train e y_train deben tener el mismo largo")
+
+    if not 1 <= horizonte <= 24:
+        raise ValueError("El horizonte debe estar entre 1 y 24 horas")
+
+    train = X_train.select(
+        (pl.col("hora") + pl.duration(hours=horizonte)).alias("_hora_target")
+    ).with_columns(pl.Series("_temperatura", y_train.to_list()))
+
+    train = train.with_columns(
+        pl.col("_hora_target").dt.month().alias("_mes"),
+        pl.col("_hora_target").dt.hour().alias("_hora"),
     )
+
+    climatologia = train.group_by("_mes", "_hora").agg(
+        pl.col("_temperatura").mean().alias("_prediccion")
+    )
+
+    media_general = train["_temperatura"].mean()
+
+    datos_prediccion = X.select(
+        (pl.col("hora") + pl.duration(hours=horizonte)).alias("_hora_target")
+    ).with_columns(
+        pl.col("_hora_target").dt.month().alias("_mes"),
+        pl.col("_hora_target").dt.hour().alias("_hora"),
+    )
+
+    resultado = datos_prediccion.join(
+        climatologia,
+        on=["_mes", "_hora"],
+        how="left",
+        maintain_order="left",
+    )
+
+    return resultado["_prediccion"].fill_null(media_general).alias("pronostico")
 
 
 def make_expanding_folds(
@@ -190,9 +297,41 @@ def make_expanding_folds(
     `indice` es la columna `hora` de `X`. Devuelve posiciones enteras de esa
     columna, no fechas: son las que usa `walk_forward` para seleccionar filas.
     """
-    raise NotImplementedError(
-        "Completen make_expanding_folds antes de ejecutar esta celda."
-    )
+    if not anios:
+        raise ValueError("Debe indicar al menos un año")
+
+    if purga_horas < 0:
+        raise ValueError("La purga no puede ser negativa")
+
+    horas = indice.to_list()
+
+    if not horas or any(hora is None for hora in horas):
+        raise ValueError("El índice debe contener fechas válidas")
+
+    zona = horas[0].tzinfo
+    folds = []
+
+    for anio in anios:
+        inicio = datetime(anio, 1, 1, tzinfo=zona)
+        fin = datetime(anio + 1, 1, 1, tzinfo=zona)
+        corte_train = inicio - timedelta(hours=purga_horas)
+
+        train_idx = np.array(
+            [i for i, hora in enumerate(horas) if hora < corte_train],
+            dtype=int,
+        )
+
+        val_idx = np.array(
+            [i for i, hora in enumerate(horas) if inicio <= hora < fin],
+            dtype=int,
+        )
+
+        if len(train_idx) == 0 or len(val_idx) == 0:
+            raise ValueError("Los folds no pueden quedar vacíos")
+
+        folds.append((train_idx, val_idx))
+
+    return folds
 
 
 def walk_forward(
@@ -209,9 +348,55 @@ def walk_forward(
     Devuelve una tabla con las columnas `hora` (el origen), `fold`, `real` y
     `pronostico`.
     """
-    raise NotImplementedError(
-        "Completen walk_forward antes de ejecutar esta celda."
-    )
+    from copy import deepcopy
+
+    if len(X) != len(y):
+        raise ValueError("X e y deben tener el mismo largo")
+
+    if "hora" not in X.columns:
+        raise ValueError("X debe contener la columna 'hora'")
+
+    resultados = []
+
+    for train_idx, val_idx in folds:
+        if len(train_idx) == 0 or len(val_idx) == 0:
+            raise ValueError("Los folds no pueden estar vacíos")
+
+        if np.intersect1d(train_idx, val_idx).size > 0:
+            raise ValueError("no puede incluir validation")
+
+        X_train = X[train_idx]
+        X_val = X[val_idx]
+
+        y_train = y[train_idx]
+        y_val = y[val_idx]
+
+        modelo_fold = deepcopy(modelo)
+
+        modelo_fold.fit(
+            X_train.drop("hora"),
+            y_train,
+        )
+
+        predicciones = modelo_fold.predict(X_val.drop("hora"))
+
+        anio = len(resultados) + 1
+
+        resultado = pl.DataFrame(
+            {
+                "hora": X_val["hora"],
+                "fold": [anio] * len(val_idx),
+                "real": y_val,
+                "pronostico": predicciones,
+            }
+        )
+
+        resultados.append(resultado)
+
+    if not resultados:
+        raise ValueError("Debe existir al menos un fold")
+
+    return pl.concat(resultados)
 
 
 def recall_evento(real: pl.Series, alerta: pl.Series) -> float:
